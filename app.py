@@ -2,106 +2,82 @@ import streamlit as st
 import pandas as pd
 import time
 
-# --- KONFIGURACJA WYGLĄDU AIfi ---
-st.set_page_config(page_title="AIfi POC | AVFC Events", layout="wide")
+# --- AIfi VISUAL CONFIGURATION ---
+st.set_page_config(page_title="AIfi Events Portal", layout="wide")
 
 st.markdown("""
     <style>
-    /* Tło i główny kolor */
     .stApp { background-color: #ffffff; }
-    
-    /* Nagłówki */
-    h1, h2, h3 { color: #007BFF !important; font-family: 'Segoe UI', sans-serif; }
-    
-    /* Stylizacja przycisku głównego */
-    .stButton>button {
-        background-color: #007BFF;
-        color: white;
-        border-radius: 20px;
-        border: none;
-        padding: 10px 25px;
-        font-weight: bold;
-        transition: 0.3s;
-    }
-    .stButton>button:hover {
-        background-color: #0056b3;
-        color: #e0e0e0;
-    }
-
-    /* Stylizacja tabeli i kart */
-    .event-card {
-        background-color: #f8f9fa;
-        border-left: 5px solid #007BFF;
-        padding: 15px;
-        border-radius: 5px;
-        margin-bottom: 10px;
-    }
+    h1, h2, h3 { color: #007BFF !important; }
+    .stButton>button { background-color: #007BFF; color: white; border-radius: 20px; }
+    .admin-box { border: 2px solid #007BFF; padding: 20px; border-radius: 10px; background-color: #f0f8ff; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- LOGIKA POC ---
-
-st.title("⚽ AIfi Event Intelligence: AVFC")
-st.write("System monitorowania wydarzeń dla Aston Villa FC (Proof of Concept)")
-
-# Sidebar dla ustawień
-with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/en/thumb/f/f9/Aston_Villa_FC_crest_%282016%29.svg/1200px-Aston_Villa_FC_crest_%282016%29.svg.png", width=100)
-    st.info("Status: Połączono z silnikiem AI")
-    target_url = st.text_input("URL do skanowania", value="https://www.avfc.co.uk/matches")
-
-# Inicjalizacja danych w sesji
+# --- SESSION STATE INITIALIZATION ---
 if 'data' not in st.session_state:
-    st.session_state.data = None
+    # Initial Mock Data
+    st.session_state.data = pd.DataFrame([
+        {"Date": "2026-02-01", "Event": "AVFC vs Brentford", "Type": "Premier League", "Valid": False},
+        {"Date": "2026-02-14", "Event": "AVFC vs Liverpool", "Type": "Premier League", "Valid": False},
+        {"Date": "2026-02-28", "Event": "Hospitality Tour Villa Park", "Type": "Other", "Valid": False},
+    ])
 
-# Przycisk akcji
-if st.button("🔍 URUCHOM SKANOWANIE AI"):
-    with st.spinner('Agent AI analizuje stronę biletową i kalendarz...'):
-        # Symulacja pracy Firecrawl + Gemini
-        time.sleep(2) 
-        
-        # Mock-up danych wyciągniętych przez AI
-        raw_results = [
-            {"Data": "2026-02-01", "Wydarzenie": "Aston Villa vs Brentford", "Typ": "Premier League", "Valid": False},
-            {"Data": "2026-02-14", "Wydarzenie": "Aston Villa vs Liverpool", "Typ": "Premier League", "Valid": False},
-            {"Data": "2026-02-28", "Wydarzenie": "Event: Hospitality Tour Villa Park", "Typ": "Inne", "Valid": False},
-            {"Data": "2026-03-05", "Wydarzenie": "Aston Villa vs RB Leipzig", "Typ": "Champions League", "Valid": False},
-        ]
-        st.session_state.data = pd.DataFrame(raw_results)
-        st.success("Znaleziono 4 nowe wydarzenia!")
+# --- SIDEBAR & AUTHENTICATION ---
+with st.sidebar:
+    st.title("AIfi Access")
+    role = st.radio("Select Role:", ["Client", "Admin"])
+    
+    if role == "Admin":
+        password = st.text_input("Admin Password", type="password")
+        if password != "aifi2026": # Temporary POC password
+            st.warning("Please enter correct password to see Admin View")
+            st.stop()
+    
+    st.divider()
+    st.image("https://upload.wikimedia.org/wikipedia/en/thumb/f/f9/Aston_Villa_FC_crest_%282016%29.svg/1200px-Aston_Villa_FC_crest_%282016%29.svg.png", width=80)
 
-# Wyświetlanie wyników
-if st.session_state.data is not None:
-    st.subheader("Znalezione eventy")
-    
-    # Tworzymy nagłówki kolumn
-    head1, head2, head3, head4 = st.columns([2, 4, 2, 1])
-    head1.markdown("**Data**")
-    head2.markdown("**Wydarzenie**")
-    head3.markdown("**Kategoria**")
-    head4.markdown("**Status**")
-    
-    # Iteracja po danych
+# --- CLIENT VIEW ---
+if role == "Client":
+    st.title("⚽ Client Dashboard: AVFC")
+    st.write("Please review the events below and check 'Valid' for those you approve.")
+
     for index, row in st.session_state.data.iterrows():
         c1, c2, c3, c4 = st.columns([2, 4, 2, 1])
+        c1.write(row["Date"])
+        c2.markdown(f"**{row['Event']}**")
+        c3.caption(row["Type"])
         
-        with c1:
-            st.write(row["Data"])
-        with c2:
-            st.markdown(f"**{row['Wydarzenie']}**")
-        with c3:
-            st.caption(row["Typ"])
-        with c4:
-            # Checkbox dla klienta
-            is_valid = st.checkbox("Valid", value=row["Valid"], key=f"check_{index}")
-            st.session_state.data.at[index, "Valid"] = is_valid
+        # This updates the master data frame
+        is_valid = c4.checkbox("Valid", value=row["Valid"], key=f"client_{index}")
+        st.session_state.data.at[index, "Valid"] = is_valid
 
-    # Sekcja eksportu
-    st.divider()
-    if st.button("Zatwierdź i wyślij do raportu"):
-        valid_count = st.session_state.data["Valid"].sum()
-        if valid_count > 0:
-            st.balloons()
-            st.success(f"Raport wygenerowany! Przesłano {valid_count} zatwierdzonych eventów do bazy.")
-        else:
-            st.warning("Proszę zaznaczyć przynajmniej jeden valid event.")
+    if st.button("Submit Validation"):
+        st.success("Thank you! Your selections have been saved for the Admin.")
+        st.balloons()
+
+# --- ADMIN VIEW ---
+elif role == "Admin":
+    st.title("🛠️ Admin Control Panel")
+    st.write("Overview of client activities and validated events.")
+
+    # KPI Row
+    total_events = len(st.session_state.data)
+    validated_events = st.session_state.data["Valid"].sum()
+    
+    col_a, col_b = st.columns(2)
+    col_a.metric("Total Events Found", total_events)
+    col_b.metric("Validated by Client", validated_events)
+
+    st.subheader("Full Data Log")
+    
+    # Custom styling for Admin Table
+    def color_valid(val):
+        color = '#d4edda' if val else '#f8d7da'
+        return f'background-color: {color}'
+
+    st.table(st.session_state.data.style.applymap(color_valid, subset=['Valid']))
+
+    # Admin Export
+    csv = st.session_state.data.to_csv(index=False).encode('utf-8')
+    st.download_button("Download Final Report (CSV)", data=csv, file_name="admin_report.csv")
