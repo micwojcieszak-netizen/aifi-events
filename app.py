@@ -1,8 +1,10 @@
 import streamlit as st
 import pandas as pd
 import time
+from datetime import datetime, timedelta
+import random
 
-# --- AIfi VISUAL CONFIGURATION ---
+# --- AIfi VISUALS ---
 st.set_page_config(page_title="AIfi Events Portal", layout="wide")
 
 st.markdown("""
@@ -10,25 +12,41 @@ st.markdown("""
     .stApp { background-color: #ffffff; }
     h1, h2, h3 { color: #007BFF !important; }
     .stButton>button { background-color: #007BFF; color: white; border-radius: 20px; }
-    .event-row { padding: 10px; border-bottom: 1px solid #eee; }
+    .event-box { padding: 15px; border: 1px solid #eee; border-radius: 10px; margin-bottom: 10px; background: #fafafa; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- DATABASE SIMULATION ---
+# --- ENGINE: SIMULATING 3-MONTH SCAN ---
+def ai_scan_3_months():
+    """Simulates scanning for Feb, March, April 2026"""
+    teams = ["Arsenal", "Chelsea", "Man City", "Liverpool", "Spurs", "Newcastle", "Everton"]
+    event_types = ["Premier League", "Champions League", "FA Cup", "Hospitality Event"]
+    
+    new_events = []
+    # Generate 5 random events within the next 90 days
+    for _ in range(5):
+        days_ahead = random.randint(1, 90)
+        date = (datetime.now() + timedelta(days=days_ahead)).strftime("%Y-%m-%d")
+        opponent = random.choice(teams)
+        e_type = random.choice(event_types)
+        
+        new_events.append({
+            "Date": date,
+            "Event": f"AVFC vs {opponent}" if "Match" in e_type or "League" in e_type else f"{e_type} @ Villa Park",
+            "Type": e_type
+        })
+    return pd.DataFrame(new_events).sort_values("Date")
+
+# --- DATA PERSISTENCE ---
 if 'master_log' not in st.session_state:
-    # This stores EVERYTHING ever handled
-    st.session_state.master_log = pd.DataFrame(columns=["Date", "Event", "Type", "Status", "Reason"])
+    st.session_state.master_log = pd.DataFrame(columns=["Date", "Event", "Type", "Status", "Reason", "Timestamp"])
 
 if 'current_search' not in st.session_state:
-    # This stores only the results of the latest scan
-    st.session_state.current_search = pd.DataFrame([
-        {"Date": "2026-02-15", "Event": "AVFC vs Arsenal", "Type": "Premier League"},
-        {"Date": "2026-02-22", "Event": "AVFC vs Chelsea", "Type": "Premier League"}
-    ])
+    st.session_state.current_search = ai_scan_3_months()
 
 # --- SIDEBAR ---
 with st.sidebar:
-    st.title("AIfi Control")
+    st.title("AIfi Intelligence")
     role = st.radio("Access Level:", ["Client", "Admin"])
     
     if role == "Admin":
@@ -36,72 +54,57 @@ with st.sidebar:
             st.stop()
     
     st.divider()
-    if st.button("🔄 Rescan Live Events"):
-        # Logic to fetch new data would go here
-        st.success("New events loaded!")
-        st.rerun()
+    # THE REFRESH BUTTON
+    if st.button("🔄 Scrape Next 3 Months"):
+        with st.spinner("AI Agent scanning Villa Park calendar (Feb-Apr 2026)..."):
+            st.session_state.current_search = ai_scan_3_months()
+            st.success("New data retrieved!")
+            st.rerun()
 
 # --- CLIENT VIEW ---
 if role == "Client":
-    st.title("⚽ Client Event Review")
-    st.write("Review new discoveries and set their status.")
+    st.title("⚽ AVFC Event Pipeline (Next 3 Months)")
+    st.info("AI found these upcoming events. Select an action for each.")
 
+    if st.session_state.current_search.empty:
+        st.warning("No new events in the queue. Click 'Scrape' in the sidebar to find more.")
+    
     for index, row in st.session_state.current_search.iterrows():
         with st.container():
-            col1, col2, col3 = st.columns([3, 3, 4])
+            st.markdown(f"""<div class='event-box'>
+                <b>{row['Event']}</b><br>
+                <small>{row['Date']} | {row['Type']}</small>
+            </div>""", unsafe_allow_html=True)
             
-            col1.markdown(f"**{row['Event']}**")
-            col1.caption(f"{row['Date']} | {row['Type']}")
-            
-            # Action Selection
-            status = col2.selectbox("Action", ["Pending", "Validate", "Cancelled"], key=f"stat_{index}")
+            c1, c2, c3 = st.columns([2, 3, 1])
+            status = c1.selectbox("Action", ["Pending", "Validate", "Cancelled"], key=f"s_{index}")
             
             reason = ""
             if status == "Cancelled":
-                reason = col3.text_input("Reason for cancellation?", key=f"re_{index}")
+                reason = c2.text_input("Reason?", key=f"r_{index}")
             
-            # Submit specific item
-            if col2.button("Submit Choice", key=f"btn_{index}"):
-                new_entry = {
-                    "Date": row["Date"],
-                    "Event": row["Event"],
-                    "Type": row["Type"],
-                    "Status": status,
-                    "Reason": reason
-                }
-                # Add to Admin's Master Log
-                st.session_state.master_log = pd.concat([st.session_state.master_log, pd.DataFrame([new_entry])], ignore_index=True)
-                # Remove from current view
-                st.session_state.current_search = st.session_state.current_search.drop(index)
-                st.success(f"Sent to Admin as {status}")
-                time.sleep(1)
-                st.rerun()
+            if c3.button("Submit", key=f"b_{index}"):
+                if status == "Pending":
+                    st.error("Please select Validate or Cancelled")
+                else:
+                    new_entry = {
+                        "Date": row["Date"], "Event": row["Event"], "Type": row["Type"],
+                        "Status": status, "Reason": reason, "Timestamp": datetime.now().strftime("%H:%M:%S")
+                    }
+                    st.session_state.master_log = pd.concat([st.session_state.master_log, pd.DataFrame([new_entry])], ignore_index=True)
+                    st.session_state.current_search = st.session_state.current_search.drop(index)
+                    st.rerun()
 
 # --- ADMIN VIEW ---
 elif role == "Admin":
-    st.title("🛠️ Admin Master Log")
-    st.write("Full history of client decisions.")
-
+    st.title("🛠️ Admin Monitor")
+    
     if st.session_state.master_log.empty:
-        st.info("No events processed by client yet.")
+        st.write("No client activity yet.")
     else:
-        # High-level stats
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Total Processed", len(st.session_state.master_log))
-        c2.metric("Validated", len(st.session_state.master_log[st.session_state.master_log["Status"] == "Validate"]))
-        c3.metric("Cancelled", len(st.session_state.master_log[st.session_state.master_log["Status"] == "Cancelled"]))
-
-        # Stylized Data Table
-        st.dataframe(
-            st.session_state.master_log,
-            column_config={
-                "Status": st.column_config.SelectboxColumn(
-                    "Status", options=["Validate", "Cancelled"], required=True
-                )
-            },
-            hide_index=True,
-            use_container_width=True
-        )
+        # Show validated vs cancelled
+        st.write("### Processed Events History")
+        st.dataframe(st.session_state.master_log, use_container_width=True)
         
         csv = st.session_state.master_log.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download Final History (CSV)", csv, "aifi_history.csv", "text/csv")
+        st.download_button("Download Admin Report", csv, "aifi_admin_report.csv")
